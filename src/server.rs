@@ -1,13 +1,12 @@
-use super::common::{FromServerMessage, FromClientMessage};
+use super::common::{FromClientMessage, FromServerMessage};
 
-use message_io::network::{NetEvent, Transport, Endpoint};
+use message_io::network::{Endpoint, NetEvent, Transport};
 use message_io::node::{self};
 
-use std::collections::{HashMap};
-use std::net::{SocketAddr};
+use std::collections::HashMap;
+use std::net::SocketAddr;
 
 struct ClientInfo {
-    arb_data: String,
     count: usize,
 }
 
@@ -25,15 +24,37 @@ pub fn run(transport: Transport, addr: SocketAddr) {
 
     listener.for_each(move |event| match event.network() {
         NetEvent::Message(endpoint, input_data) => {
-            let message: FromClientMessage = bincode::deserialize(&input_data).unwrap();
+            let mut status: i32 = 0;
+            let message: FromClientMessage = match bincode::deserialize(&input_data) {
+                Ok(val) => val,
+                Err(_) => FromClientMessage::InvalidConnection,
+            };
             match message {
+                FromClientMessage::InvalidConnection => {
+                    handler.network().remove(endpoint.resource_id());
+                    clients.remove(&endpoint);
+                    println!(
+                        "Client ({}) severed because of an error (total clients: {})",
+                        endpoint.addr(),
+                        clients.len()
+                    );
+                }
                 FromClientMessage::Ping => {
                     let message = match clients.get_mut(&endpoint) {
                         Some(client) => {
                             // For connection oriented protocols
-                            if client.count >= 10 {
-                                println!("Ping from {}, {} times, signaling death...", endpoint.addr(), client.count);
-                                FromServerMessage::Pong("die".to_string(), client.count)
+                            if client.count >= 9 {
+                                client.count += 1;
+
+                                println!(
+                                    "Ping from {}, {} times, severing connection...",
+                                    endpoint.addr(),
+                                    client.count
+                                );
+
+                                status = 1;
+
+                                FromServerMessage::Pong(endpoint.addr().to_string(), client.count)
                             } else {
                                 client.count += 1;
                                 println!("Ping from {}, {} times", endpoint.addr(), client.count);
@@ -50,11 +71,25 @@ pub fn run(transport: Transport, addr: SocketAddr) {
                     handler.network().send(endpoint, &output_data);
                 }
             }
+
+            if status == 1 {
+                handler.network().remove(endpoint.resource_id());
+                clients.remove(&endpoint).unwrap();
+                println!(
+                    "Client ({}) disconnected (total clients: {})",
+                    endpoint.addr(),
+                    clients.len()
+                );
+            }
         }
         NetEvent::Connected(endpoint, _) => {
             // Only connection oriented protocols will generate this event
-            clients.insert(endpoint, ClientInfo { arb_data: "invalid".to_string(), count: 0 });
-            println!("Client ({}) connected (total clients: {})", endpoint.addr(), clients.len());
+            clients.insert(endpoint, ClientInfo { count: 0 });
+            println!(
+                "Client ({}) connected (total clients: {})",
+                endpoint.addr(),
+                clients.len()
+            );
         }
         NetEvent::Disconnected(endpoint) => {
             // Only connection oriented protocols will generate this event

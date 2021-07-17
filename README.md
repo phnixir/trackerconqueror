@@ -1,6 +1,6 @@
 # Trackerconqueror
 Random scraper i felt like writing for modarchive, ended up being a useful journey to learn about
-networking and whatever, also gave birth to [marchive-open-db](https::/github.com/phnixir/marchive-open-db)
+networking and whatever, also gave birth to [marchive-open-db](https://github.com/phnixir/marchive-open-db)
 which is cool, wear your hazmat suits before going sourcecode diving, a rust beginner wrote this
 after all.
 
